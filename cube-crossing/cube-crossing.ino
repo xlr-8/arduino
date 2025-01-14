@@ -19,27 +19,38 @@
 // strandtest example for more information on possible values.
 Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
+// Whether or not you want some debugging displayed to console
+// Please note that depending on the amount of debug this can
+// slow down the execution of your program considerably
 #define DEBUG false
-#define SLOWLINESS 50 // Time (in milliseconds) to pause between pixels
-#define CROSSINGS_QTY 6
-#define CROSSINGS_MAX_SIZE 2
-#define WORMS_QTY 4
-#define WORMS_BODY 6
 
+/*
+** Definitions of constant & structure used for the "worms" mode
+*/
+#define SLOWLINESS 50         // Time (in milliseconds) to pause between pixels
+#define CROSSINGS_QTY 6       // Quantity of crossing on the strip LED
+#define CROSSINGS_MAX_SIZE 2  // Max size of the crossing - amount of direction possibles
+#define WORMS_QTY 4           // Amount of worms desired on the strip LED
+#define WORMS_BODY 6          // Size of the worms moving around in LED
+
+// Direction in which the worms move
 #define BACKWARD 0
 #define FORWARD 1
 
+// Crossing indicated on which LED the worm can switch directions
 struct Crossing {
-  int index;
-  int values[CROSSINGS_MAX_SIZE];
+  int index;                        // Position of the crossing
+  int values[CROSSINGS_MAX_SIZE];   // Possible direction to take
 };
 
+// Worm represents a single worm: position, size & direction
 struct Worm {
-  int index;
-  int body[WORMS_BODY];
-  int direction;
+  int index;                        // Position of the head of the worm
+  int body[WORMS_BODY];             // Size of the worms body to move around
+  int direction;                    // Direction which the worm is taking
 };
 
+// Create & define the amount of crossing possible for worms
 Crossing crossings[CROSSINGS_QTY] = {
   {4, {4, 81}},
   {81, {4, 81}},
@@ -47,13 +58,26 @@ Crossing crossings[CROSSINGS_QTY] = {
   {51, {51, 11}},
   {40, {40, 90}},
   {90, {40, 90}},
-};  // You can set this to whatever size you need
+};
 
-Worm WORMS[WORMS_QTY]; /* = {
-  {0, FORWARD},
-  {50, BACKWARD},
-  {100, FORWARD},
-};*/
+// Create the amount of worms desired
+Worm WORMS[WORMS_QTY];
+
+//
+void setupWorms() {
+  // Print the contents of the crossings array
+  if (DEBUG) {
+    printCrossings();
+  }
+
+  // Worms are randomerly added onto to the strip LED
+  for (int i = 0; i < WORMS_QTY; i++) {
+    // If not set with +1 only BACKWARD will be selected
+    WORMS[i].direction = random(BACKWARD, FORWARD + 1);
+    WORMS[i].index = random(0, NUMPIXELS);
+    WORMS[i].body[0] = WORMS[i].index;
+  }
+}
 
 void setup() {
   // These lines are specifically to support the Adafruit Trinket 5V 16 MHz.
@@ -69,27 +93,17 @@ void setup() {
   pixels.begin(); // INITIALIZE NeoPixel strip object (REQUIRED)
   pixels.setBrightness(50); // Set BRIGHTNESS to about 1/5 (max = 255)
 
-  // Print the contents of the crossings array
-  if (DEBUG) {
-    printCrossings();
-  } 
-
-  // Add worms to the strip paths
-  for (int i = 0; i < WORMS_QTY; i++) {
-    WORMS[i].index = random(0, NUMPIXELS); // SHOULD BE THE MAX LENGTH
-    WORMS[i].direction = random(BACKWARD, FORWARD);  // SHOULD BE RANDOM(FWD, BCD)
-    WORMS[i].body[0] = WORMS[i].index;
-  }
+  setupWorms();
 }
 
+// Helper to clear out the strip LED
 void clear_strip(int d) {
-  pixels.clear(); // Set all pixel colors to 'off'
-  pixels.show();   // Send the updated pixel colors to the hardware.
-  delay(d); // Pause before next pass through loop
+  pixels.clear();
+  pixels.show();
 }
 
-// Function to print all the crossings data
-void printCrossings() {  
+// Debgugging function to print all the crossings data instanciated
+void printCrossings() {
   for (int i = 0; i < CROSSINGS_QTY; i++) {
     Serial.print("Crossing ");
     Serial.print(crossings[i].index);
@@ -102,9 +116,53 @@ void printCrossings() {
   }
 }
 
+/*
+** GLOW MODE
+** This mode will simply make the strip LED glow by randomely selecting
+** the intensity of the brightness and the delay. Thus making it glow
+** slightly randomely both in terms of intensity and speed.
+*/
+void glow() {
+  pixels.setBrightness(1); // Set BRIGHTNESS to about 1/5 (max = 255)
+  pixels.fill(pixels.Color(150, 0, 0), 0, NUMPIXELS);
+  pixels.show();   // Send the updated pixel colors to the hardware.
+
+  int max = random(35, 125);
+  int wait = random(10, 50);
+
+  if (DEBUG) {
+    Serial.print("target: ");
+    Serial.println(max);
+    Serial.print("Wait: ");
+    Serial.println(wait);
+  }
+
+  // Start making the strip LED brighter
+  for (int b=1; b < max; b++) {
+    pixels.setBrightness(b);
+    pixels.show();
+    delay(SLOWLINESS+wait);
+  }
+
+  // Start making the strip LED darker
+  for (int b=max; b >= 0; b--) {
+    pixels.setBrightness(b);
+    pixels.show();
+    delay(SLOWLINESS+wait);
+  }
+
+  delay(2000);
+}
+
+/*
+** WORMS MODE
+** This mode will make the "worms" start moving around the strip led
+** when meeting a crossing of LED, they will be able to move towards
+** either direction by switching LED and/or direction randomly
+*/
 void move(Worm *w) {
   int crossingIdx = -1;
- 
+
   if (DEBUG) {
     Serial.println("=========== BEGIN ==========");
     Serial.print("Worm moves: ");
@@ -123,7 +181,7 @@ void move(Worm *w) {
   // A crossing has been found, so we need to get a random LED to jump on
   if (crossingIdx != -1) {
     int ridx = random(0, CROSSINGS_MAX_SIZE);
-    
+
     if (DEBUG) {
       Serial.print("Crossing IDX: ");
       Serial.println(crossingIdx);
@@ -138,7 +196,7 @@ void move(Worm *w) {
     // If we reached a crossing we can go change direction either way
     // else we continue on the one we were on
     if (crossings[crossingIdx].index != w->index) {
-      w->direction = random(BACKWARD, FORWARD);
+      w->direction = random(BACKWARD, FORWARD+1);
     }
   }
 
@@ -146,7 +204,7 @@ void move(Worm *w) {
   if (w->direction == BACKWARD) {
     w->index = w->index - 1;
   } else {
-    w->index = w->index + 1;  
+    w->index = w->index + 1;
   }
 
   // We reached the end so circle back one way or the other
@@ -173,13 +231,9 @@ void move(Worm *w) {
   }
 }
 
-void loop() {
-  clear_strip(100);
-
-  // The first NeoPixel in a strand is #0, second is 1, all the way up
-  // to the count of pixels minus one.
+void worms() {
   while(true) {
-    pixels.clear(); // Set all pixel colors to 'off'
+    pixels.clear();
 
     for (int w=0; w < WORMS_QTY; w++) {
       move(&WORMS[w]);
@@ -189,7 +243,20 @@ void loop() {
       }
     }
 
-    pixels.show();   // Send the updated pixel colors to the hardware.
-    delay(SLOWLINESS); // Pause before next pass through loop
+    pixels.show();
+    delay(SLOWLINESS);
+  }
+}
+
+/*
+** Start the loop based on the mode selected
+*/
+void loop() {
+  int mode = 1;
+
+  if (mode == 1) {
+    glow();
+  } else {
+    worms();
   }
 }
